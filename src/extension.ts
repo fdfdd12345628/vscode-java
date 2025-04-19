@@ -1286,6 +1286,8 @@ async function findJavaTestClassesAndReferences() {
         const className = path.basename(file.fsPath, '.java');
         testClasses.push(className);
 
+		logByTestRefactoring(`Start looking up test class: ${className}`);
+
         // Find references for each class using the language server API
         const position = await findClassNamePosition(className, file.fsPath);
         if (!position) {
@@ -1301,8 +1303,8 @@ async function findJavaTestClassesAndReferences() {
 
         if (locations) {
             references[className] = locations.map(location => location.uri.fsPath);
-			logByTestRefactoring(`Found references for ${className}: ${references[className].join(', ')}`);
-        }
+			logByTestRefactoring(`Found references count for ${className}: ${references[className].length}`);
+		}
     }
 
     // Write results to result.txt
@@ -1315,6 +1317,7 @@ ${refs.map(ref => `  - ${ref}`).join('\n')}`;
 
     fs.writeFileSync(resultFilePath, resultContent);
     window.showInformationMessage(`Results written to ${resultFilePath}`);
+	logByTestRefactoring(`Results written to ${resultFilePath}`);
 }
 
 async function findClassNamePosition(className: string, documentPath: string): Promise<Position | undefined> {
