@@ -6,7 +6,7 @@ import * as fse from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
 import * as semver from 'semver';
-import { CodeActionContext, commands, CompletionItem, ConfigurationTarget, Diagnostic, env, EventEmitter, ExtensionContext, extensions, IndentAction, InputBoxOptions, languages, Location, MarkdownString, QuickPickItemKind, Range, RelativePattern, SnippetString, SnippetTextEdit, TextDocument, TextEditorRevealType, UIKind, Uri, version, ViewColumn, window, workspace, WorkspaceConfiguration, WorkspaceEdit } from 'vscode';
+import { CodeActionContext, commands, CompletionItem, ConfigurationTarget, Diagnostic, env, EventEmitter, ExtensionContext, extensions, IndentAction, InputBoxOptions, languages, Location, MarkdownString, Position, QuickPickItemKind, Range, RelativePattern, SnippetString, SnippetTextEdit, TextDocument, TextEditorRevealType, UIKind, Uri, version, ViewColumn, window, workspace, WorkspaceConfiguration, WorkspaceEdit } from 'vscode';
 import { CancellationToken, CodeActionParams, CodeActionRequest, CodeActionResolveRequest, Command, CompletionRequest, DidChangeConfigurationNotification, ExecuteCommandParams, ExecuteCommandRequest, LanguageClientOptions, RevealOutputChannelOn } from 'vscode-languageclient';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { apiManager } from './apiManager';
@@ -39,6 +39,7 @@ import { BuildFileSelector, PICKED_BUILD_FILES, cleanupWorkspaceState } from './
 import { pasteFile } from './pasteAction';
 import { ServerStatusKind } from './serverStatus';
 import { TelemetryService } from '@redhat-developer/vscode-redhat-telemetry/lib/node';
+import { log } from 'console';
 
 const syntaxClient: SyntaxLanguageClient = new SyntaxLanguageClient();
 const standardClient: StandardLanguageClient = new StandardLanguageClient();
@@ -137,6 +138,10 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
 	context.subscriptions.push(commands.registerCommand(Commands.LEARN_MORE_ABOUT_CLEAN_UPS, async () => {
 		markdownPreviewProvider.show(context.asAbsolutePath(path.join('document', `${Commands.LEARN_MORE_ABOUT_CLEAN_UPS}.md`)), 'Java Clean Ups', "java-clean-ups", context);
 	}));
+
+	context.subscriptions.push(
+        commands.registerCommand(Commands.FIND_TEST_CLASSES_REFERENCE, findJavaTestClassesAndReferences)
+    );
 	if (!storagePath) {
 		storagePath = getTempWorkspace();
 	}
@@ -1262,4 +1267,86 @@ function registerRestartJavaLanguageServerCommand(context: ExtensionContext) {
 				break;
 		}
 	}));
+}
+
+async function findJavaTestClassesAndReferences() {
+    const workspaceFolders = workspace.workspaceFolders;
+    if (!workspaceFolders) {
+        window.showErrorMessage('No workspace folder is open.');
+        return;
+    }
+
+    const rootPath = workspaceFolders[0].uri.fsPath;
+    const testClasses: string[] = [];
+    const references: { [key: string]: string[] } = {};
+
+    // Find all Java classes ending with *Test
+    const files = await workspace.findFiles('**/*Test.java');
+    for (const file of files) {
+        const className = path.basename(file.fsPath, '.java');
+        testClasses.push(className);
+
+        // Find references for each class using the language server API
+        const position = await findClassNamePosition(className, file.fsPath);
+        if (!position) {
+            logByTestRefactoring(`Skipping reference lookup for ${className} as position is undefined.`);
+            continue;
+        }
+
+        const locations = await commands.executeCommand<Location[]>(
+            'vscode.executeReferenceProvider',
+            file, // The file URI
+            position // The position of the class name
+        );
+
+        if (locations) {
+            references[className] = locations.map(location => location.uri.fsPath);
+			logByTestRefactoring(`Found references for ${className}: ${references[className].join(', ')}`);
+        }
+    }
+
+    // Write results to result.txt
+    const resultFilePath = path.join(rootPath, 'result.txt');
+    const resultContent = testClasses.map(className => {
+        const refs = references[className] || [];
+        return `${className}:
+${refs.map(ref => `  - ${ref}`).join('\n')}`;
+    }).join('\n\n');
+
+    fs.writeFileSync(resultFilePath, resultContent);
+    window.showInformationMessage(`Results written to ${resultFilePath}`);
+}
+
+async function findClassNamePosition(className: string, documentPath: string): Promise<Position | undefined> {
+	let document = undefined;
+	try {
+		const file = await workspace.fs.readFile(Uri.file(documentPath));
+		const text = file.toString();
+		logByTestRefactoring(`Read file: ${documentPath}`);
+		// logByTestRefactoring(`File content: ${text}`);
+		logByTestRefactoring(`Class name: ${className}`);
+		document = text;
+	} catch (error) {
+		logByTestRefactoring(`Error reading file: ${documentPath}, ${error}`);
+	}
+
+	if (!document) {
+		logByTestRefactoring(`Document not found for path: ${documentPath}`);
+		return undefined;
+	}
+	const lines = document.split('\n');
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i].includes(className)) {
+			logByTestRefactoring(`Found class name ${className} at line ${i} in document: ${documentPath}`);
+			return new Position(i, lines[i].indexOf(className));
+		}
+	}
+	logByTestRefactoring(`Class name ${className} not found in document: ${documentPath}`);
+	return undefined;
+}
+
+const testRefactoringChannel = window.createOutputChannel('Java Test Refactoring');
+
+function logByTestRefactoring(log: string) {
+	testRefactoringChannel.appendLine(log);
 }

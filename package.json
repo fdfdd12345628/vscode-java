@@ -1,12 +1,12 @@
 {
-  "name": "java",
+  "name": "my-java-extension",
   "displayName": "Language Support for Java(TM) by Red Hat",
   "description": "Java Linting, Intellisense, formatting, refactoring, Maven/Gradle support and more...",
-  "author": "Red Hat",
+  "author": "shihlien",
   "icon": "icons/icon128.png",
   "license": "EPL-2.0",
-  "version": "1.42.0",
-  "publisher": "redhat",
+  "version": "1.1.0",
+  "publisher": "shihlien",
   "bugs": "https://github.com/redhat-developer/vscode-java/issues",
   "preview": false,
   "capabilities": {
@@ -1735,6 +1735,10 @@
         "command": "java.action.showExtendedOutline",
         "title": "%java.action.showExtendedOutline%",
         "category": "Java"
+      },
+      {
+        "command": "java.findTestClassesAndReferences",
+        "title": "Find all test classes and references"
       }
     ],
     "keybindings": [

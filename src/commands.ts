@@ -366,6 +366,11 @@ export namespace Commands {
      */
     export const SHOW_EXTEND_OUTLINE = 'java.action.showExtendedOutline';
 
+    /**
+     * findJavaTestClassesAndReferences
+     */
+    export const FIND_TEST_CLASSES_REFERENCE = 'java.findTestClassesAndReferences';
+
 }
 
 /**
